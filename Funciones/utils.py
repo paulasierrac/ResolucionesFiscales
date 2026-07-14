@@ -175,6 +175,7 @@ def enviar_correo(
     i_asunto_fallback: str = "",
     i_contenido_fallback: str = "",
     i_incluir_pie: bool = True,
+    i_sufijo_contenido: str = "",
 ) -> str:
     """
     Equivalente al bot EnviarCorreo de AA (adaptado a la tabla real [Correos]:
@@ -230,6 +231,9 @@ def enviar_correo(
                 task_name, in_config,
             )
             to, subject, body = in_config.get("MailTo", ""), i_asunto_fallback, i_contenido_fallback
+
+        if i_sufijo_contenido:
+            body = f"{body}\n{i_sufijo_contenido}" if body else i_sufijo_contenido
 
         if pie:
             body = f"{body}\n\n{pie}" if body else pie
