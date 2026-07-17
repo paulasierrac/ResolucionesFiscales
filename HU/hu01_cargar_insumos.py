@@ -54,12 +54,14 @@ def cargar_insumos(config: dict) -> dict:
     )
 
     try:
+        # --- Notificacion de inicio de ejecucion (Num_Correo=10) ---
         enviar_correo(
             config, i_num_correo="10", i_from_address=from_address,
             i_asunto_fallback="RPA_LISA: Se da comienzo a la ejecución del bot",
             i_contenido_fallback="Se informa que se dara comienzo a la ejecución del bot RPA_LISA para el día de hoy.",
         )
 
+        # --- Hard-stop 1: no existe la carpeta Parametros (Num_Correo=1) ---
         if not os.path.isdir(ruta_carpeta_parametros):
             enviar_correo(
                 config, i_num_correo="1", i_from_address=from_address,
@@ -73,6 +75,7 @@ def cargar_insumos(config: dict) -> dict:
             write_log("Error", f"HU01: No existe la carpeta [{ruta_carpeta_parametros}]", TASK_NAME, config)
             return {"Config": config, "IdHU": "1", "Excecution": False, "SystemException": ""}
 
+        # --- Hard-stop 2: no existe el archivo Parametros.xlsx (Num_Correo=2) ---
         if not os.path.isfile(ruta_parametros_xlsx):
             enviar_correo(
                 config, i_num_correo="2", i_from_address=from_address,
@@ -85,6 +88,9 @@ def cargar_insumos(config: dict) -> dict:
             write_log("Error", f"HU01: No existe el archivo [{ruta_parametros_xlsx}]", TASK_NAME, config)
             return {"Config": config, "IdHU": "1", "Excecution": False, "SystemException": ""}
 
+        # --- Soft-stop: no existe HomologacionPrefijo.xlsx (Num_Correo=3) ---
+        # No detiene la ejecucion: solo se omite la recarga de esa tabla y se sigue
+        # con lo que ya haya en BD de una corrida anterior.
         existe_homologacion = os.path.isfile(ruta_homologacion_xlsx)
         if not existe_homologacion:
             enviar_correo(
@@ -101,6 +107,9 @@ def cargar_insumos(config: dict) -> dict:
                 TASK_NAME, config,
             )
 
+        # --- Validar que las hojas requeridas (ej. "Correos") existan en el Excel (Num_Correo=4) ---
+        # Nota: si faltan hojas, IdHU queda en "2" (no "1"): la siguiente corrida salta
+        # directo a HU02 usando los datos ya cargados, en vez de reintentar HU01.
         hojas_requeridas = [h.strip() for h in config.get("HojasDeParametros", "Correos").split(",") if h.strip()]
         xl = pd.ExcelFile(ruta_parametros_xlsx)
         faltantes = [h for h in hojas_requeridas if h not in xl.sheet_names]
@@ -118,6 +127,8 @@ def cargar_insumos(config: dict) -> dict:
         conn = conectar_bd(config)
         cursor = conn.cursor()
 
+        # --- Recargar [Correos]: se trunca (DELETE) e inserta todo de nuevo desde la hoja "Correos" ---
+        # 'Actividad' no viene en el Excel, siempre se inserta vacia (igual que el bot original).
         df_correos = pd.read_excel(xl, sheet_name="Correos", dtype=str).fillna("")
         cursor.execute(f"DELETE FROM {esquema}.{TABLA_CORREOS}")
         for _, fila in df_correos.iterrows():
@@ -134,6 +145,10 @@ def cargar_insumos(config: dict) -> dict:
         conn.commit()
         write_log("Info", f"HU01: Se recargo la tabla Correos ({len(df_correos)} filas)", TASK_NAME, config)
 
+        # --- Recargar [HomologacionPrefijo] solo si el archivo existia ---
+        # Se trunca (TRUNCATE) e inserta desde Sheet1, y se limpia el Prefijo
+        # (quitar espacios/guiones) para que despues homologue bien contra el Prefijo
+        # extraido de los PDFs en HU03.
         if existe_homologacion:
             df_homolog = pd.read_excel(ruta_homologacion_xlsx, sheet_name=0, dtype=str).fillna("")
             cursor.execute(f"TRUNCATE TABLE {esquema}.{TABLA_HOMOLOGACION}")

@@ -25,9 +25,15 @@ Automation Anywhere (que quedaba en un bucle infinito dentro de un mismo
 proceso), aquí un Task Scheduler externo debe invocar `python main.py`
 periódicamente para que el ciclo 01→02→03 avance.
 
+## Instalación y ejecución
+
 ```
+pip install -r requirements.txt
 python main.py
 ```
+
+Requiere Python 3.10+ y el [ODBC Driver 17 (o superior) para SQL Server](https://learn.microsoft.com/sql/connect/odbc/download-odbc-driver-for-sql-server)
+instalado en el equipo.
 
 ## Configuración
 
@@ -46,19 +52,14 @@ python main.py
 
 ## Base de datos
 
-DDL + seed en [ResolucionesFiscales_Completo.sql](ResolucionesFiscales_Completo.sql)
-(esquema `ResolucionesFiscales`: `Parametros`, `ControlHU`, `Correos`,
+**Única fuente de verdad del esquema:** [ResolucionesFiscales_Completo.sql](ResolucionesFiscales_Completo.sql)
+(DDL + seed del esquema `ResolucionesFiscales`: `Parametros`, `ControlHU`, `Correos`,
 `HomologacionPrefijo`, `TicketInsumo`). Ejecutarlo contra la BD de dev/prod antes
 de correr el proceso.
 
 > Nota: el seed trae `TablaHomologacionPrefijos = '[HomologacionPrefijos]'` (plural),
 > pero la tabla real es `HomologacionPrefijo` (singular). El código usa el nombre
 > correcto de forma literal; vale la pena corregir el seed también.
-
-## Dependencias
-
-Ver [requirements.txt](requirements.txt). Requiere ODBC Driver 17 (o superior)
-para SQL Server instalado en el equipo.
 
 ## Extracción de PDF
 

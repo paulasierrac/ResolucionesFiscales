@@ -54,6 +54,7 @@ def obtener_config() -> dict:
     from dotenv import load_dotenv
     load_dotenv(_root / ".env", override=False)
 
+    # RPA_DEBUG=True -> ambiente de desarrollo (secretos Dev-*); False -> produccion.
     rpa_debug = os.environ.get("RPA_DEBUG", "True").strip().lower() == "true"
     prefijo = "Dev" if rpa_debug else "Prod"
 
@@ -205,6 +206,7 @@ def enviar_correo(
         esquema = in_config.get("Esquema") or in_config.get("Scheme", "[ResolucionesFiscales]")
         tabla   = in_config.get("TablaCorreos", "Correos")
 
+        # --- Buscar la plantilla del correo por Num_Correo, y el pie compartido (Num_Correo='0') ---
         conn   = conectar_bd(in_config)
         cursor = conn.cursor()
         cursor.execute(
@@ -221,6 +223,7 @@ def enviar_correo(
             pie = fila_pie[0] if fila_pie and fila_pie[0] else ""
         conn.close()
 
+        # --- Si no hay plantilla (o no tiene destinatario), usar MailTo + textos de respaldo ---
         if row is not None and row[0]:
             to, subject, body = row[0], row[1] or "", row[2] or ""
         else:
@@ -232,12 +235,14 @@ def enviar_correo(
             )
             to, subject, body = in_config.get("MailTo", ""), i_asunto_fallback, i_contenido_fallback
 
+        # Contenido dinamico (ej. lista de PDFs invalidos, ruta del reporte) va antes del pie.
         if i_sufijo_contenido:
             body = f"{body}\n{i_sufijo_contenido}" if body else i_sufijo_contenido
 
         if pie:
             body = f"{body}\n\n{pie}" if body else pie
 
+        # Placeholders tipo "$Variable$" en asunto/cuerpo, si la plantilla los usa.
         for key, val in i_replace_in_subject.items():
             subject = subject.replace(key, str(val))
         for key, val in i_replace_in_message.items():

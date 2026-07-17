@@ -26,6 +26,7 @@ TASK_NAME = "HU00_DespliegeAmbiente"
 
 
 def _restar_meses(fecha: date, meses: int) -> date:
+    """Resta 'meses' meses a 'fecha' (usada para calcular la fecha de corte de logs viejos)."""
     mes_total = fecha.month - 1 - meses
     anio = fecha.year + mes_total // 12
     mes = mes_total % 12 + 1
@@ -49,6 +50,8 @@ def desplegar_ambiente(config: dict) -> dict:
     config["TablaParametros"] = tabla_parametros
 
     try:
+        # --- Paso 1: valores de arranque que no vienen de la BD sino del entorno ---
+        # (equivalente a System:USERNAME / System:USERPROFILE / @Server / @Database en AA)
         config["Usuario"] = getpass.getuser()
         config["RutaLocal"] = os.environ.get("USERPROFILE", str(Path.home()))
         config["Server"] = config.get("_db", {}).get("server", "")
@@ -59,6 +62,9 @@ def desplegar_ambiente(config: dict) -> dict:
         conn = conectar_bd(config)
         cursor = conn.cursor()
 
+        # --- Paso 2: upsert de las 6 claves de arranque en [Parametros] ---
+        # Si la fila no existe se crea vacia y luego se actualiza (igual que el bot AA,
+        # que primero valida existencia y despues hace el UPDATE del valor real).
         for clave in claves_bootstrap:
             valor = config.get(clave, "")
             cursor.execute(
@@ -76,11 +82,17 @@ def desplegar_ambiente(config: dict) -> dict:
             )
         conn.commit()
 
+        # --- Paso 3: cargar TODA la tabla [Parametros] al diccionario de configuracion ---
+        # A partir de aqui 'config' tiene todas las variables del proceso (RutaBase, MailTo,
+        # nombres de archivo/carpeta, etc.), no solo las 6 claves de arranque.
         cursor.execute(f"SELECT Nombre, Valor FROM {esquema}.{tabla_parametros}")
         for nombre, valor in cursor.fetchall():
             config[nombre] = valor
         conn.close()
 
+        # --- Paso 4: validar que la ruta base de red exista (hard-stop silencioso) ---
+        # Si no existe, se notifica por correo y se retorna Excecution=False sin lanzar
+        # excepcion: es un "no ejecutable", no un error real (igual que el stopTask de AA).
         ruta_base = config.get("RutaBase", "")
         if not ruta_base or not os.path.isdir(ruta_base):
             enviar_correo(
@@ -103,6 +115,8 @@ def desplegar_ambiente(config: dict) -> dict:
 
         write_log("Info", "-----HU00: Comienza la HU00-----", TASK_NAME, config)
 
+        # --- Paso 5: crear las subcarpetas requeridas por el proceso ---
+        # CarpetasRutaRed es una lista separada por comas (ej. "Logs,Parametros,...").
         carpetas = [c.strip() for c in config.get("CarpetasRutaRed", "").split(",") if c.strip()]
         for carpeta in carpetas:
             ruta_carpeta = os.path.join(ruta_base, carpeta)
@@ -110,6 +124,7 @@ def desplegar_ambiente(config: dict) -> dict:
                 os.makedirs(ruta_carpeta, exist_ok=True)
         write_log("Info", "HU00: Se validaron carpetas del proceso", TASK_NAME, config)
 
+        # --- Paso 6: purgar logs mas viejos que MesesRepositorioLog meses ---
         path_log = config.get("PathLog", "")
         meses_repositorio = int(config.get("MesesRepositorioLog", "12") or "12")
         if path_log and os.path.isdir(path_log):

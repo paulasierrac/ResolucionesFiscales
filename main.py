@@ -36,6 +36,7 @@ _EJECUTORES = {
 
 
 def _enviar_correo_fatal(config: dict, system_exception: str) -> None:
+    """Notifica cuando se agotan los MAXIMO_REINTENTOS sin exito (ultimo recurso)."""
     enviar_correo(
         config, i_num_correo="FatalError",
         i_from_address=config.get("_correo", {}).get("usuario", ""),
@@ -52,9 +53,11 @@ def ejecutar_una_pasada() -> None:
     reintentos = 0
 
     while reintentos < MAXIMO_REINTENTOS:
+        # --- HU00 corre SIEMPRE primero: recarga Config y valida el ambiente ---
         resultado_ambiente = desplegar_ambiente(config)
         config = resultado_ambiente["Config"]
 
+        # Si HU00 truena, se reintenta todo el flujo desde cero (igual que AA).
         if resultado_ambiente["SystemException"]:
             reintentos += 1
             write_log(
@@ -71,6 +74,7 @@ def ejecutar_una_pasada() -> None:
             # Stop silencioso (ej. RutaBase no existe): no es error, no reintenta.
             return
 
+        # --- Determinar cual HU esta activa en ControlHU (maquina de estados en BD) ---
         esquema = config.get("Scheme", "[ResolucionesFiscales]")
         conn = conectar_bd(config)
         cursor = conn.cursor()
@@ -88,9 +92,11 @@ def ejecutar_una_pasada() -> None:
             write_log("Error", f"Main: HU desconocida en ControlHU: {hu_actual}", TASK_NAME, config)
             return
 
+        # --- Ejecutar la HU activa (HU01/02/03) ---
         resultado = ejecutor(config)
         config = resultado["Config"]
 
+        # Si la HU truena, se reintenta todo el flujo desde HU00 (no solo esta HU).
         if resultado["SystemException"]:
             reintentos += 1
             write_log(
@@ -103,6 +109,7 @@ def ejecutar_una_pasada() -> None:
                 return
             continue
 
+        # --- Exito: mover el puntero de ControlHU a la siguiente HU y terminar la pasada ---
         conn = conectar_bd(config)
         cursor = conn.cursor()
         cursor.execute(f"UPDATE {esquema}.ControlHU SET Activa = 0")

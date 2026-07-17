@@ -33,6 +33,7 @@ _COLUMNAS_REPORTE = (
 
 
 def _sumar_meses(fecha: date, meses: int) -> date:
+    """Suma 'meses' meses a 'fecha' (usada para calcular el mes objetivo del reporte de vencimientos)."""
     mes_total = fecha.month - 1 + meses
     anio = fecha.year + mes_total // 12
     mes = mes_total % 12 + 1
@@ -41,6 +42,7 @@ def _sumar_meses(fecha: date, meses: int) -> date:
 
 
 def _ultimo_dia_mes(anio: int, mes: int) -> date:
+    """Retorna la fecha del ultimo dia calendario del mes dado."""
     if mes == 12:
         return date(anio, 12, 31)
     primero_siguiente = date(anio, mes + 1, 1)
@@ -71,7 +73,10 @@ def generar_reporte_notificar_casos(config: dict) -> dict:
         conn = conectar_bd(config)
         cursor = conn.cursor()
 
-        # --- 1. Depurar registros con datos incompletos ---
+        # --- 1. Depurar registros con datos incompletos (Num_Correo=7) ---
+        # Chequeo defensivo: HU02 ya deberia insertar solo filas completas, pero se
+        # conserva la validacion por si algun PDF produjo datos parciales.
+        # Se notifica y se eliminan (no se reintenta su extraccion).
         cursor.execute(
             f"SELECT NombrePdf FROM {esquema}.TicketInsumo WHERE Estado = '2' AND "
             "(FechaInicioRes IS NULL OR FechaVencimientoRes IS NULL OR "
@@ -101,6 +106,9 @@ def generar_reporte_notificar_casos(config: dict) -> dict:
             write_log("Business", f"HU03: Se eliminaron registros inconsistentes de: {lista}", TASK_NAME, config)
 
         # --- 2. Homologar Prefijo contra HomologacionPrefijo ---
+        # Rellena Centro/CentroBeneficio/NombreBase/TipoHomologacion/DireccionHomologacion
+        # por cada Prefijo que coincida; los que no tienen match quedan con esos campos
+        # vacios y se notifican (Num_Correo=8) pero SIN eliminarse (siguen en el reporte).
         cursor.execute(
             f"UPDATE t1 SET t1.Centro = t2.Centro, t1.CentroBeneficio = t2.CentroBeneficio, "
             "t1.NombreBase = t2.NombreEnBase, t1.TipoHomologacion = t2.Tipo, "
@@ -128,6 +136,9 @@ def generar_reporte_notificar_casos(config: dict) -> dict:
             write_log("Business", f"HU03: Prefijos sin homologar: {prefijos_nuevos}", TASK_NAME, config)
 
         # --- 3. Reporte diario (Estado = '2') ---
+        # Si hay filas pendientes: exportar a Excel, detectar resoluciones "electronicas"
+        # (Tipo contiene alguna de las PalabraClaveResElectronica), notificar con el
+        # reporte adjunto (Num_Correo=9), y promover esas filas a Estado='3' (cerradas).
         cursor.execute(f"SELECT COUNT(*) FROM {esquema}.TicketInsumo WHERE Estado = '2'")
         hay_pendientes = cursor.fetchone()[0] > 0
 
@@ -172,6 +183,8 @@ def generar_reporte_notificar_casos(config: dict) -> dict:
             conn.commit()
 
         # --- 4. Consolidado (Estado = '3', historico completo) ---
+        # Se corre siempre (haya o no reporte diario nuevo), sobrescribiendo el mismo
+        # archivo cada vez con TODO el historico de resoluciones ya cerradas.
         ruta_consolidado_carpeta = os.path.join(ruta_base, config.get("CarpetaReportes", "Reportes"), config.get("CarpetaConsolidado", "Consolidado"))
         os.makedirs(ruta_consolidado_carpeta, exist_ok=True)
         ruta_consolidado = os.path.join(
@@ -184,6 +197,9 @@ def generar_reporte_notificar_casos(config: dict) -> dict:
         write_log("Info", f"HU03: Consolidado actualizado en [{ruta_consolidado}]", TASK_NAME, config)
 
         # --- 5. Reporte mensual de resoluciones que venceran (solo el dia configurado) ---
+        # Se gatilla unicamente cuando hoy.day == DiaReporteVencidos (ej. dia 10 de cada
+        # mes). Ventana de fechas = TODO el mes siguiente al actual (mes_objetivo).
+        # Incluye tanto Estado='2' (aun no reportadas) como Estado='3' (ya reportadas).
         dia_reporte_vencidos = str(config.get("DiaReporteVencidos", "")).strip()
         if dia_reporte_vencidos and f"{hoy.day:02d}" == dia_reporte_vencidos.zfill(2):
             mes_objetivo = _sumar_meses(hoy, 1)

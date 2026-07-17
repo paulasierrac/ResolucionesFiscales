@@ -31,6 +31,7 @@ TASK_NAME = "HU02_ProcesarPdfResoluciones"
 
 
 def _mover_archivo(origen: str, destino_carpeta: str, nombre: str) -> None:
+    """Copia + borra (equivalente a un 'mover' que funciona entre discos/unidades de red)."""
     os.makedirs(destino_carpeta, exist_ok=True)
     shutil.copyfile(origen, os.path.join(destino_carpeta, nombre))
     os.remove(origen)
@@ -51,10 +52,12 @@ def procesar_pdfs(config: dict) -> dict:
     ruta_pdfs_invalidos = os.path.join(ruta_base, config.get("CarpetaPdfInvalido", "PDFsInvalidos"))
 
     try:
+        # --- Paso 1: escanear RutaBase (solo el nivel superior, PDFs recien llegados) ---
         nombres_pdf = sorted(
             f for f in os.listdir(ruta_base) if f.lower().endswith(".pdf")
         ) if os.path.isdir(ruta_base) else []
 
+        # --- Salida temprana: no hay nada que procesar (Num_Correo=5) ---
         if not nombres_pdf:
             enviar_correo(
                 config, i_num_correo="5", i_from_address=from_address,
@@ -68,6 +71,7 @@ def procesar_pdfs(config: dict) -> dict:
             write_log("Info", "-----HU02: Finalizo HU02-----", TASK_NAME, config)
             return {"Config": config, "IdHU": "3", "Excecution": True, "SystemException": ""}
 
+        # --- Paso 2: carpeta destino de los PDFs validos, con estructura RutaBase/Reportes/AAAA/MM/DD ---
         hoy = date.today()
         ruta_reportes = os.path.join(
             ruta_base, config.get("CarpetaReportes", "Reportes"),
@@ -76,6 +80,9 @@ def procesar_pdfs(config: dict) -> dict:
         os.makedirs(ruta_reportes, exist_ok=True)
         write_log("Info", f"HU02: En la ruta [{ruta_reportes}] quedan los archivos procesados", TASK_NAME, config)
 
+        # --- Paso 3: clasificar cada PDF por cantidad de hojas ---
+        # Validas: 2, 3 o 4 hojas (formulario DIAN 1876 con 1 pagina de datos generales
+        # + 1 pagina de tabla por cada hoja adicional). Invalidas: 1 hoja o mas de 4.
         validos, invalidos = [], []
         for nombre in nombres_pdf:
             ruta_pdf = os.path.join(ruta_base, nombre)
@@ -87,6 +94,7 @@ def procesar_pdfs(config: dict) -> dict:
                 continue
             (validos if 2 <= paginas <= 4 else invalidos).append(nombre)
 
+        # --- Paso 4: notificar y archivar los PDFs invalidos (Num_Correo=6) ---
         if invalidos:
             os.makedirs(ruta_pdfs_invalidos, exist_ok=True)
             lista = ", ".join(invalidos)
@@ -106,6 +114,9 @@ def procesar_pdfs(config: dict) -> dict:
             for nombre in invalidos:
                 _mover_archivo(os.path.join(ruta_base, nombre), ruta_pdfs_invalidos, nombre)
 
+        # --- Paso 5: extraer datos e insertar en TicketInsumo (Estado='1' = recien insertado) ---
+        # A diferencia de AA (que insertaba 11 filas candidatas por hoja y borraba las
+        # vacias por SQL), aca extraer_datos_pdf() ya devuelve solo las filas con datos.
         if validos:
             conn = conectar_bd(config)
             cursor = conn.cursor()
@@ -114,6 +125,9 @@ def procesar_pdfs(config: dict) -> dict:
                 filas = extraer_datos_pdf(ruta_pdf)
                 filas_utiles = [f for f in filas if "_sin_parsear" not in f]
 
+                # PDF valido por cantidad de hojas pero sin ningun dato reconocible:
+                # equivalente al caso "el bot no puede identificar" de HU03, pero aca
+                # se deja visible en el log en vez de fallar en silencio.
                 if not filas_utiles:
                     write_log(
                         "Warning",
@@ -146,6 +160,8 @@ def procesar_pdfs(config: dict) -> dict:
                 conn.commit()
                 _mover_archivo(ruta_pdf, ruta_reportes, nombre)
 
+            # --- Paso 6: commit final -> Estado '1' (extraido) pasa a '2' (comprometido) ---
+            # HU03 solo trabaja sobre filas en Estado='2'.
             cursor.execute(f"UPDATE {esquema}.TicketInsumo SET Estado = '2', FechaModificacion = GETDATE() WHERE Estado = '1'")
             conn.commit()
             conn.close()
