@@ -54,13 +54,6 @@ def cargar_insumos(config: dict) -> dict:
     )
 
     try:
-        # --- Notificacion de inicio de ejecucion (Num_Correo=10) ---
-        enviar_correo(
-            config, i_num_correo="10", i_from_address=from_address,
-            i_asunto_fallback="RPA_LISA: Se da comienzo a la ejecución del bot",
-            i_contenido_fallback="Se informa que se dara comienzo a la ejecución del bot RPA_LISA para el día de hoy.",
-        )
-
         # --- Hard-stop 1: no existe la carpeta Parametros (Num_Correo=1) ---
         if not os.path.isdir(ruta_carpeta_parametros):
             enviar_correo(
@@ -144,6 +137,16 @@ def cargar_insumos(config: dict) -> dict:
             )
         conn.commit()
         write_log("Info", f"HU01: Se recargo la tabla Correos ({len(df_correos)} filas)", TASK_NAME, config)
+
+        # --- Notificacion de inicio de ejecucion (Num_Correo=10) ---
+        # Se envia DESPUES de recargar [Correos] (no antes, como en el bot original)
+        # para usar siempre los destinatarios frescos del Excel, no los que hubiera
+        # en la tabla de una corrida anterior (evita notificar a la lista vieja).
+        enviar_correo(
+            config, i_num_correo="10", i_from_address=from_address,
+            i_asunto_fallback="RPA_LISA: Se da comienzo a la ejecución del bot",
+            i_contenido_fallback="Se informa que se dara comienzo a la ejecución del bot RPA_LISA para el día de hoy.",
+        )
 
         # --- Recargar [HomologacionPrefijo] solo si el archivo existia ---
         # Se trunca (TRUNCATE) e inserta desde Sheet1, y se limpia el Prefijo
