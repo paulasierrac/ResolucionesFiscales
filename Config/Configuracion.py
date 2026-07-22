@@ -3,7 +3,7 @@ from azure.keyvault.secrets import SecretClient
 from dotenv import load_dotenv
 import os
 
-load_dotenv()
+load_dotenv(override=True)
 
 _VAULT_URL     = os.getenv("VAULT_URL")
 _TENANT_ID     = os.getenv("TENANT_ID")

@@ -52,7 +52,10 @@ def obtener_config() -> dict:
         _sys.path.insert(0, str(_root))
 
     from dotenv import load_dotenv
-    load_dotenv(_root / ".env", override=False)
+    # override=True: el .env del proyecto siempre gana sobre cualquier variable de
+    # entorno del sistema/usuario con el mismo nombre (CLIENT_ID/TENANT_ID/etc.),
+    # evitando que un valor viejo/ajeno ya presente en el equipo rompa la carga.
+    load_dotenv(_root / ".env", override=True)
 
     # RPA_DEBUG=True -> ambiente de desarrollo (secretos Dev-*); False -> produccion.
     rpa_debug = os.environ.get("RPA_DEBUG", "True").strip().lower() == "true"
