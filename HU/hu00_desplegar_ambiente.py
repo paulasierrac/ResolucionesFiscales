@@ -129,17 +129,30 @@ def desplegar_ambiente(config: dict) -> dict:
         meses_repositorio = int(config.get("MesesRepositorioLog", "12") or "12")
         if path_log and os.path.isdir(path_log):
             fecha_corte = _restar_meses(date.today(), meses_repositorio)
+            nombres_archivo = os.listdir(path_log)
             write_log(
                 "Info",
-                f"HU00: Se eliminaran logs anteriores a [{fecha_corte.strftime('%m/%d/%y')}]",
+                f"HU00: Se eliminaran logs anteriores a [{fecha_corte.strftime('%m/%d/%y')}] "
+                f"({len(nombres_archivo)} archivos a revisar en [{path_log}])",
                 TASK_NAME, config,
             )
-            for nombre_archivo in os.listdir(path_log):
+            eliminados = 0
+            for indice, nombre_archivo in enumerate(nombres_archivo, start=1):
                 ruta_archivo = os.path.join(path_log, nombre_archivo)
                 if os.path.isfile(ruta_archivo):
                     fecha_mod = date.fromtimestamp(os.path.getmtime(ruta_archivo))
                     if fecha_mod < fecha_corte:
                         os.remove(ruta_archivo)
+                        eliminados += 1
+                # Ruta de red (PathLog): cada isfile/getmtime/remove es una llamada
+                # de red, por eso se reporta avance cada 200 archivos.
+                if indice % 200 == 0:
+                    write_log(
+                        "Info",
+                        f"HU00: Purga de logs en progreso: {indice}/{len(nombres_archivo)} revisados, "
+                        f"{eliminados} eliminados",
+                        TASK_NAME, config,
+                    )
         write_log("Info", "HU00: Se realizo limpieza de Logs", TASK_NAME, config)
 
         write_log("Info", "-----HU00: Finalizo HU00-----", TASK_NAME, config)
