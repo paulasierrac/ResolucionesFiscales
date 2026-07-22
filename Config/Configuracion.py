@@ -1,14 +1,15 @@
 from azure.identity import ClientSecretCredential
 from azure.keyvault.secrets import SecretClient
-from dotenv import load_dotenv
 import os
 
-load_dotenv(override=True)
-
-_VAULT_URL     = os.getenv("VAULT_URL")
-_TENANT_ID     = os.getenv("TENANT_ID")
-_CLIENT_ID     = os.getenv("CLIENT_ID")
-_CLIENT_SECRET = os.getenv("CLIENT_SECRET")
+# NOTA: este modulo NO llama load_dotenv() ni lee os.getenv(...) a nivel de
+# modulo. Antes lo hacia una sola vez, en el primer import, y quedaba
+# cacheado -- si ese primer import ocurria antes de que el .env estuviera
+# cargado (o si su propio load_dotenv() encontraba otro archivo .env por el
+# camino), _CLIENT_ID etc. quedaban vacios para el resto del proceso aunque
+# despues el .env se cargara bien. Ahora se lee os.environ en cada llamada a
+# CargarVault(), y quien llama (Funciones.utils.obtener_config) es responsable
+# de haber cargado el .env correcto antes.
 
 
 # ─────────────────────────────────────────────
@@ -26,12 +27,25 @@ def CargarVault(filtro_tags: dict = None, strip_prefix: str = None, nombres: lis
 
     Retorna dict { clave: valor }
     """
+    vault_url     = os.getenv("VAULT_URL")
+    tenant_id     = os.getenv("TENANT_ID")
+    client_id     = os.getenv("CLIENT_ID")
+    client_secret = os.getenv("CLIENT_SECRET")
+
+    faltantes = [n for n, v in (("VAULT_URL", vault_url), ("TENANT_ID", tenant_id),
+                                 ("CLIENT_ID", client_id), ("CLIENT_SECRET", client_secret)) if not v]
+    if faltantes:
+        raise ValueError(
+            f"CargarVault: faltan variables de entorno {faltantes}. "
+            f"Verificar que el .env se cargo antes de llamar CargarVault()."
+        )
+
     credential = ClientSecretCredential(
-        tenant_id     = _TENANT_ID,
-        client_id     = _CLIENT_ID,
-        client_secret = _CLIENT_SECRET,
+        tenant_id     = tenant_id,
+        client_id     = client_id,
+        client_secret = client_secret,
     )
-    client   = SecretClient(vault_url=_VAULT_URL, credential=credential)
+    client   = SecretClient(vault_url=vault_url, credential=credential)
     secretos = {}
 
     for prop in client.list_properties_of_secrets():
