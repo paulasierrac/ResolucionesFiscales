@@ -5,11 +5,12 @@ Migracion del bot Automation Anywhere "Main_ResolucionesFiscales" a Python.
 Propiedad de Colsubsidio
 ================================================================================
 
-Ejecuta UNA pasada: corre la HU actualmente activa en [ControlHU] (con
-reintentos de todo el flujo si falla, igual que el bot original), actualiza
-[ControlHU] a la siguiente HU, y termina. Para procesar las 3 HUs en
-secuencia, un Task Scheduler externo debe invocar este script cada N minutos
-(a diferencia del bot AA, que quedaba corriendo en un bucle infinito).
+Cada invocacion corre el ciclo completo pendiente en [ControlHU]: procesa la HU
+activa, avanza el puntero, y sigue con la siguiente -- hasta terminar HU03, y
+ahi se detiene (no vuelve a HU01 dentro de la misma corrida). A diferencia del
+bot original de Automation Anywhere (que quedaba en un bucle infinito sin
+parar nunca salvo error), aca cada invocacion hace un ciclo 1->2->3 y termina;
+un Task Scheduler externo la vuelve a invocar para el siguiente ciclo.
 """
 
 import sys
@@ -48,12 +49,12 @@ def _enviar_correo_fatal(config: dict, system_exception: str) -> None:
     )
 
 
-def ejecutar_una_pasada() -> None:
+def ejecutar() -> None:
     config = obtener_config()
     reintentos = 0
 
     while reintentos < MAXIMO_REINTENTOS:
-        # --- HU00 corre SIEMPRE primero: recarga Config y valida el ambiente ---
+        # --- HU00 corre SIEMPRE antes de cada HU: recarga Config y valida el ambiente ---
         resultado_ambiente = desplegar_ambiente(config)
         config = resultado_ambiente["Config"]
 
@@ -109,7 +110,7 @@ def ejecutar_una_pasada() -> None:
                 return
             continue
 
-        # --- Exito: mover el puntero de ControlHU a la siguiente HU y terminar la pasada ---
+        # --- Exito: mover el puntero de ControlHU a la siguiente HU ---
         conn = conectar_bd(config)
         cursor = conn.cursor()
         cursor.execute(f"UPDATE {esquema}.ControlHU SET Activa = 0")
@@ -125,8 +126,13 @@ def ejecutar_una_pasada() -> None:
             f"Main: HU{hu_actual} finalizó correctamente, siguiente HU activa = {resultado['IdHU']}",
             TASK_NAME, config,
         )
-        return
+
+        # Se acaba de terminar HU03: el ciclo 1->2->3 esta completo, se detiene aca
+        # (no vuelve a HU01 dentro de la misma corrida).
+        if hu_actual == "3":
+            return
+        # Si no, sigue el while y procesa la siguiente HU en esta misma corrida.
 
 
 if __name__ == "__main__":
-    ejecutar_una_pasada()
+    ejecutar()
