@@ -32,6 +32,16 @@ TABLA_CORREOS = "Correos"
 TABLA_HOMOLOGACION = "HomologacionPrefijo"
 
 
+def _normalizar_num_correo(valor: str) -> str:
+    """Si la celda de Excel quedo formateada como numero, pandas (con dtype=str)
+    puede devolver '8.0' en vez de '8' -- se quita el '.0' para que despues
+    coincida con el WHERE Num_Correo=? de enviar_correo()."""
+    valor = (valor or "").strip()
+    if valor.endswith(".0") and valor[:-2].isdigit():
+        return valor[:-2]
+    return valor
+
+
 def cargar_insumos(config: dict) -> dict:
     """
     Equivalente a HU01_CargarInsumos.
@@ -130,7 +140,7 @@ def cargar_insumos(config: dict) -> dict:
                 "(Num_Correo, HU, Actividad, Caso, Para, Asunto, Contenido, ArchivoAdjunto) "
                 "VALUES (?, ?, '', ?, ?, ?, ?, ?)",
                 (
-                    fila.get("Num_Correo", ""), fila.get("HU", ""), fila.get("Caso", ""),
+                    _normalizar_num_correo(fila.get("Num_Correo", "")), fila.get("HU", ""), fila.get("Caso", ""),
                     fila.get("Para", ""), fila.get("Asunto", ""), fila.get("Contenido", ""),
                     fila.get("ArchivoAdjunto", ""),
                 ),
