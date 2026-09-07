@@ -76,10 +76,11 @@ def ejecutar() -> None:
             return
 
         # --- Determinar cual HU esta activa en ControlHU (maquina de estados en BD) ---
+        # Convencion de Activa: 0 = activa, 1 = desactivada (invertida a proposito).
         esquema = config.get("Scheme", "[ResolucionesFiscales]")
         conn = conectar_bd(config)
         cursor = conn.cursor()
-        cursor.execute(f"SELECT TOP(1) HU FROM {esquema}.ControlHU WHERE Activa = 1 ORDER BY HU")
+        cursor.execute(f"SELECT TOP(1) HU FROM {esquema}.ControlHU WHERE Activa = 0 ORDER BY HU")
         fila = cursor.fetchone()
         conn.close()
 
@@ -111,11 +112,12 @@ def ejecutar() -> None:
             continue
 
         # --- Exito: mover el puntero de ControlHU a la siguiente HU ---
+        # 1 = desactivada (para todas), luego 0 = activa solo en la fila destino.
         conn = conectar_bd(config)
         cursor = conn.cursor()
-        cursor.execute(f"UPDATE {esquema}.ControlHU SET Activa = 0")
+        cursor.execute(f"UPDATE {esquema}.ControlHU SET Activa = 1")
         cursor.execute(
-            f"UPDATE {esquema}.ControlHU SET Activa = 1, Maquina = ?, FechaModificacion = GETDATE() WHERE HU = ?",
+            f"UPDATE {esquema}.ControlHU SET Activa = 0, Maquina = ?, FechaModificacion = GETDATE() WHERE HU = ?",
             (config.get("Usuario", ""), resultado["IdHU"]),
         )
         conn.commit()
