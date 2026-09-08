@@ -140,7 +140,7 @@ def procesar_pdfs(config: dict) -> dict:
                     cursor.execute(
                         f"INSERT INTO {esquema}.TicketInsumo "
                         "(FechaInicio, FechaModificacion, FechaFin, Estado, Observacion, Centro, "
-                        " CentroBeneficio, NombreBase, Resolucion, FechaInicioRes, FechaVencimientoRes, "
+                        " CentroBeneficio, NombreEnBase, Resolucion, FechaInicioRes, FechaVencimientoRes, "
                         " Prefijo, NumInicial, NumFinal, Tipo, Direccion, Meses, TipoHomologacion, "
                         " DireccionHomologacion, NombrePdf) "
                         "VALUES (GETDATE(), GETDATE(), NULL, '1', '', '', '', '', ?, ?, ?, ?, ?, ?, ?, ?, ?, '', '', ?)",

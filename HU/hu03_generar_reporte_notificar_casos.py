@@ -26,7 +26,7 @@ from Funciones.utils import write_log, enviar_correo, conectar_bd
 TASK_NAME = "HU03_GenerarReporteYNotificarCasos"
 
 _COLUMNAS_REPORTE = (
-    "Centro, CentroBeneficio, NombreBase, Resolucion, FechaInicioRes, FechaVencimientoRes, "
+    "Centro, CentroBeneficio, NombreEnBase, Resolucion, FechaInicioRes, FechaVencimientoRes, "
     "Prefijo, NumInicial, NumFinal, Tipo, TipoHomologacion, Direccion, DireccionHomologacion, "
     "Meses, FechaInicio AS FechaDeProcesamiento"
 )
@@ -108,13 +108,13 @@ def generar_reporte_notificar_casos(config: dict) -> dict:
         # --- 2. Homologar Prefijo contra HomologacionPrefijo/HomologacionPrefijos ---
         # El nombre real de esta tabla varia por ambiente (ver nota en hu01_cargar_insumos.py),
         # por eso se lee de config{TablaHomologacionPrefijos} en vez de hardcodearlo.
-        # Rellena Centro/CentroBeneficio/NombreBase/TipoHomologacion/DireccionHomologacion
+        # Rellena Centro/CentroBeneficio/NombreEnBase/TipoHomologacion/DireccionHomologacion
         # por cada Prefijo que coincida; los que no tienen match quedan con esos campos
         # vacios y se notifican (Num_Correo=8) pero SIN eliminarse (siguen en el reporte).
         tabla_homologacion = config.get("TablaHomologacionPrefijos", "HomologacionPrefijo")
         cursor.execute(
             f"UPDATE t1 SET t1.Centro = t2.Centro, t1.CentroBeneficio = t2.CentroBeneficio, "
-            "t1.NombreBase = t2.NombreEnBase, t1.TipoHomologacion = t2.Tipo, "
+            "t1.NombreEnBase = t2.NombreEnBase, t1.TipoHomologacion = t2.Tipo, "
             "t1.DireccionHomologacion = t2.Direccion "
             f"FROM {esquema}.TicketInsumo t1 INNER JOIN {esquema}.{tabla_homologacion} t2 "
             "ON t1.Prefijo = t2.Prefijo "
