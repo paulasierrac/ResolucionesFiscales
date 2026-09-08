@@ -5,13 +5,18 @@ Migracion del bot Automation Anywhere "HU01_CargarInsumos" a Python.
 Propiedad de Colsubsidio
 ================================================================================
 
-Recarga las tablas [Correos] y [HomologacionPrefijo] desde los archivos
-Parametros.xlsx / HomologacionPrefijo.xlsx en la carpeta de red configurada.
+Recarga las tablas [Correos] y [HomologacionPrefijo]/[HomologacionPrefijos] desde
+los archivos Parametros.xlsx / HomologacionPrefijo.xlsx en la carpeta de red
+configurada.
 
-Nota: el seed de [Parametros] trae 'TablaHomologacionPrefijos' = '[HomologacionPrefijos]'
-(plural), que NO coincide con la tabla real 'HomologacionPrefijo' (singular) del DDL.
-Por eso este modulo usa nombres de tabla literales en vez de leerlos de Config,
-para no arrastrar ese error del seed. Ver tambien memoria de proyecto sobre RPA_DEBUG.
+Nota: el nombre real de la tabla de homologacion NO es igual en todos los ambientes
+-- en produccion es '[HomologacionPrefijos]' (plural, coincide con el parametro
+'TablaHomologacionPrefijos' de [Parametros]); en dev quedo creada como singular
+'HomologacionPrefijo' cuando se corrio el DDL, inconsistente con su propio
+parametro. Por eso el nombre de tabla se lee de config{TablaHomologacionPrefijos}
+en vez de hardcodearlo (igual que hacia el bot original) -- para que ambos
+ambientes trabajen bien basta con que la tabla real coincida con ese parametro.
+Ver tambien memoria de proyecto sobre RPA_DEBUG.
 """
 
 import os
@@ -29,7 +34,6 @@ from Funciones.utils import write_log, enviar_correo, conectar_bd
 TASK_NAME = "HU01_CargarInsumos"
 
 TABLA_CORREOS = "Correos"
-TABLA_HOMOLOGACION = "HomologacionPrefijo"
 
 
 def _normalizar_num_correo(valor: str) -> str:
@@ -163,18 +167,19 @@ def cargar_insumos(config: dict) -> dict:
         # (quitar espacios/guiones) para que despues homologue bien contra el Prefijo
         # extraido de los PDFs en HU03.
         if existe_homologacion:
+            tabla_homologacion = config.get("TablaHomologacionPrefijos", "HomologacionPrefijo")
             df_homolog = pd.read_excel(ruta_homologacion_xlsx, sheet_name=0, dtype=str).fillna("")
-            cursor.execute(f"TRUNCATE TABLE {esquema}.{TABLA_HOMOLOGACION}")
+            cursor.execute(f"TRUNCATE TABLE {esquema}.{tabla_homologacion}")
             for _, fila in df_homolog.iterrows():
                 valores = tuple(fila.iloc[0:6])
                 cursor.execute(
-                    f"INSERT INTO {esquema}.{TABLA_HOMOLOGACION} "
+                    f"INSERT INTO {esquema}.{tabla_homologacion} "
                     "(Prefijo, Centro, CentroBeneficio, NombreEnBase, Tipo, Direccion, FechaModificacion) "
                     "VALUES (?, ?, ?, ?, ?, ?, GETDATE())",
                     valores,
                 )
             cursor.execute(
-                f"UPDATE {esquema}.{TABLA_HOMOLOGACION} SET Prefijo = REPLACE(REPLACE(Prefijo,' ',''),'-','')"
+                f"UPDATE {esquema}.{tabla_homologacion} SET Prefijo = REPLACE(REPLACE(Prefijo,' ',''),'-','')"
             )
             conn.commit()
             write_log("Info", f"HU01: Se recargo la tabla HomologacionPrefijo ({len(df_homolog)} filas)", TASK_NAME, config)

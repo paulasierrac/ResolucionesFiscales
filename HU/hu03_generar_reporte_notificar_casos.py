@@ -105,15 +105,18 @@ def generar_reporte_notificar_casos(config: dict) -> dict:
             conn.commit()
             write_log("Business", f"HU03: Se eliminaron registros inconsistentes de: {lista}", TASK_NAME, config)
 
-        # --- 2. Homologar Prefijo contra HomologacionPrefijo ---
+        # --- 2. Homologar Prefijo contra HomologacionPrefijo/HomologacionPrefijos ---
+        # El nombre real de esta tabla varia por ambiente (ver nota en hu01_cargar_insumos.py),
+        # por eso se lee de config{TablaHomologacionPrefijos} en vez de hardcodearlo.
         # Rellena Centro/CentroBeneficio/NombreBase/TipoHomologacion/DireccionHomologacion
         # por cada Prefijo que coincida; los que no tienen match quedan con esos campos
         # vacios y se notifican (Num_Correo=8) pero SIN eliminarse (siguen en el reporte).
+        tabla_homologacion = config.get("TablaHomologacionPrefijos", "HomologacionPrefijo")
         cursor.execute(
             f"UPDATE t1 SET t1.Centro = t2.Centro, t1.CentroBeneficio = t2.CentroBeneficio, "
             "t1.NombreBase = t2.NombreEnBase, t1.TipoHomologacion = t2.Tipo, "
             "t1.DireccionHomologacion = t2.Direccion "
-            f"FROM {esquema}.TicketInsumo t1 INNER JOIN {esquema}.HomologacionPrefijo t2 "
+            f"FROM {esquema}.TicketInsumo t1 INNER JOIN {esquema}.{tabla_homologacion} t2 "
             "ON t1.Prefijo = t2.Prefijo "
             "WHERE t1.Estado = '2' AND (t1.TipoHomologacion IS NULL OR t1.TipoHomologacion = '')"
         )
@@ -129,8 +132,8 @@ def generar_reporte_notificar_casos(config: dict) -> dict:
                 config, i_num_correo="8", i_from_address=from_address,
                 i_asunto_fallback="RPA_LISA: Existen registros que tienen un prefijo nuevo",
                 i_contenido_fallback=(
-                    "Se identificaron Prefijos que no tienen homologación en la tabla "
-                    f"[HomologacionPrefijo]: {', '.join(prefijos_nuevos)}"
+                    f"Se identificaron Prefijos que no tienen homologación en la tabla "
+                    f"[{tabla_homologacion}]: {', '.join(prefijos_nuevos)}"
                 ),
             )
             write_log("Business", f"HU03: Prefijos sin homologar: {prefijos_nuevos}", TASK_NAME, config)
